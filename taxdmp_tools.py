@@ -35,5 +35,3 @@ def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> Order
             taxonomy[taxa[taxid]["rank"]] = taxa[taxid]["name"]
         taxid = taxa[taxid]["parent"]
     return taxonomy
-
-def 
