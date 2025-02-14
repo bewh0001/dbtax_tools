@@ -20,7 +20,9 @@ def build_taxa_dict(nodes_dmp_fp: TextIO, names_dmp_fp: TextIO) -> dict:
         name_class = fields[3].strip()
         if name_class == "scientific name":
             taxid = int(fields[0])
-            taxa[taxid]["name"] = fields[1].strip()
+            taxa[taxid]["name"] = "_".join(
+                fields[1].strip().split()
+            )
     return(taxa)
 
 def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> OrderedDict:
