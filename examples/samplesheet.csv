@@ -1,0 +1,3 @@
+id,taxid,fasta_dna,fasta_aa
+Severe_acute_respiratory_syndrome_coronavirus_2,2697049,/path/to/fna/sarscov2.fasta,/path/to/faa/sarscov2.faa
+Haemophilus_influenzae,727,/path/to/fnahaemophilus_influenzae.fna.gz,
