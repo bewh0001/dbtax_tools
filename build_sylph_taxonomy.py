@@ -64,7 +64,7 @@ def build_sylph_taxonomy(
                 continue
             fields = line.split(sep=",")
             taxid = int(fields[1])
-            fasta_dna = format_sylph_fasta_filename(fields[2]).split("/")[-1]
+            fasta_dna = format_sylph_fasta_filename(fields[2])
             taxonomy = format_sylph_taxonomy(
                 taxdmp_tools.get_lineage(taxid, taxa, wanted_ranks)
             )
