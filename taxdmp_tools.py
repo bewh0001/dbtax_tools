@@ -17,7 +17,7 @@ def build_taxa_dict(nodes_dmp_fp: TextIO, names_dmp_fp: TextIO) -> dict:
         if not line.strip():
             continue
         fields = line.split(sep="|")
-        name_class = fields[1].strip()
+        name_class = fields[3].strip()
         if name_class == "scientific name":
             taxid = int(fields[0])
             taxa[taxid]["name"] = fields[1].strip()
