@@ -27,8 +27,8 @@ def build_taxa_dict(nodes_dmp_fp: TextIO, names_dmp_fp: TextIO) -> dict:
 
 def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> OrderedDict:
     taxonomy = OrderedDict()
-    for key in wanted_ranks:
-        taxonomy[key] = None # OrderedDict preserves order of insertion
+    for rank in wanted_ranks:
+        taxonomy[rank] = None # OrderedDict preserves order of insertion
     taxid = first_taxid
     while True:
         if taxid == 1:
@@ -37,3 +37,12 @@ def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> Order
             taxonomy[taxa[taxid]["rank"]] = taxa[taxid]["name"]
         taxid = taxa[taxid]["parent"]
     return taxonomy
+
+def prune_lineage_empty_ranks(lineage: OrderedDict):
+    return(
+        OrderedDict(
+            (rank, name)
+            for rank, name in lineage.items()
+            if not name == None
+        )
+    )

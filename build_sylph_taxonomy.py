@@ -85,6 +85,5 @@ def format_sylph_fasta_filename(fname: str) -> str:
         return fname
     return r.groups()[0]
 
-
 if __name__ == "__main__":
     build_sylph_taxonomy()

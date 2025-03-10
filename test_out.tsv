@@ -1,0 +1,6 @@
+sample	superkingdom	phylum	class	order	family	genus	species
+sample	superkingdom	phylum	class	order	family	genus	species
+ERR13488749	Bacteria	Pseudomonadota	Gammaproteobacteria	Pseudomonadales	Pseudomonadaceae	Stutzerimonas
+ERR13488749	Bacteria	Actinomycetota	Actinomycetes	Propionibacteriales	Propionibacteriaceae	Cutibacterium	Cutibacterium_acnes
+ERR13488749	Bacteria	Pseudomonadota	Alphaproteobacteria	Hyphomicrobiales	Nitrobacteraceae	Bradyrhizobium
+ERR13488750	Bacteria	Bacillota	Bacilli	Lactobacillales	Streptococcaceae	Streptococcus
