@@ -92,6 +92,8 @@ def main(
                         return(get_metabuli_taxid)
                     case "metacache":
                         return(get_metacache_taxid)
+                    case "sylph":
+                        return(get_sylph_taxid)
 
             for line in profile_fp:
                 if not line.strip():
@@ -147,10 +149,34 @@ def get_metabuli_taxid(line: str):
 
 def get_metacache_taxid(line: str):
     # skip comments
-    if line[0] == "#":
+    if line.strip()[0] == "#":
         return(0)
     fields = line.split(sep="|")
     taxid = int(fields[3].strip())
+    return(taxid)
+
+def get_sylph_taxid(line: str):
+    fields = line.split(sep="\t")
+    # skip first two lines
+    if fields[0] in ("#SampleID", "clade_name"):
+        return(0)
+    
+    clade = fields[0].split(sep="|")
+    tax_string = clade.pop() # get last level in clade
+
+    # only consider full clades down to species level (strain level is ignored)
+    if tax_string[0:3] != "s__":
+        return(0)
+    while True:
+        try:
+            # pick the lowest level valid taxid in clade
+            taxid = int(tax_string[3:])
+            break
+        except ValueError:
+            # if no valid taxid in clade, return 28384 (other sequences)
+            if len(clade) == 0:
+                return(28384)
+            tax_string = clade.pop()
     return(taxid)
 
 if __name__ == "__main__":
