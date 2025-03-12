@@ -32,16 +32,33 @@ from pathlib import Path
     help="path to names.dmp file",
 )
 @click.option(
-    "--outdir",
-    default="./results/sylph",
-    help="path to output directory for taxonomy.tsv file",
+    "--output",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="path to output file",
 )
+@click.option(
+    "--use-taxids",
+    "use_taxids",
+    is_flag=True,
+    default=False,
+    help="generate a lineage of taxonomic IDs instead of names"
+)
+
 def build_sylph_taxonomy(
-    samplesheet_fp: TextIO, nodes_dmp_fp: TextIO, names_dmp_fp: TextIO, outdir: str
+    samplesheet_fp: TextIO,
+    nodes_dmp_fp: TextIO,
+    names_dmp_fp: TextIO,
+    output_path: str,
+    use_taxids: bool
 ):
     
-    Path(outdir).mkdir(parents=True, exist_ok=True)
-    os.chdir(outdir)
+    output_file = Path(output_path)
+    output_dir = output_file.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    os.chdir(output_dir)
+
     taxa = taxdmp_tools.build_taxa_dict(nodes_dmp_fp, names_dmp_fp)
 
     wanted_ranks = (
@@ -54,7 +71,7 @@ def build_sylph_taxonomy(
         "species",
     )
 
-    with open("taxonomy.tsv", "w") as f_taxonomy:
+    with open(output_file, "w") as f_taxonomy:
         next(samplesheet_fp)  # skip header
         for line in samplesheet_fp:
             if not line.strip():
@@ -63,7 +80,11 @@ def build_sylph_taxonomy(
             taxid = int(fields[1])
             fasta_dna = format_sylph_fasta_filename(fields[2]).split("/")[-1]
             taxonomy = format_sylph_taxonomy(
-                taxdmp_tools.get_lineage_ids(taxid, taxa, wanted_ranks)
+                taxdmp_tools.get_lineage(
+                    first_taxid=taxid,
+                    taxa=taxa,
+                    wanted_ranks=wanted_ranks,
+                    use_taxids=use_taxids)
             )
             f_taxonomy.write("\t".join([fasta_dna, taxonomy]) + "\n")
 

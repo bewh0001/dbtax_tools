@@ -25,7 +25,12 @@ def build_taxa_dict(nodes_dmp_fp: TextIO, names_dmp_fp: TextIO) -> dict:
             )
     return(taxa)
 
-def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> OrderedDict:
+def get_lineage(
+        first_taxid: int,
+        taxa: dict,
+        wanted_ranks: tuple[str],
+        use_taxids: bool
+    ) -> OrderedDict:
     taxonomy = OrderedDict()
     for rank in wanted_ranks:
         taxonomy[rank] = None # OrderedDict preserves order of insertion
@@ -34,20 +39,10 @@ def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> Order
         if taxid == 1:
             break
         if taxa[taxid]["rank"] in wanted_ranks:
-            taxonomy[taxa[taxid]["rank"]] = taxa[taxid]["name"]
-        taxid = taxa[taxid]["parent"]
-    return taxonomy
-
-def get_lineage_ids(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> OrderedDict:
-    taxonomy = OrderedDict()
-    for rank in wanted_ranks:
-        taxonomy[rank] = None
-    taxid = first_taxid
-    while True:
-        if taxid == 1:
-            break
-        if taxa[taxid]["rank"] in wanted_ranks:
-            taxonomy[taxa[taxid]["rank"]] = taxid
+            if use_taxids:
+                taxonomy[taxa[taxid]["rank"]] = taxid
+            else:
+                taxonomy[taxa[taxid]["rank"]] = taxa[taxid]["name"]
         taxid = taxa[taxid]["parent"]
     return taxonomy
 
