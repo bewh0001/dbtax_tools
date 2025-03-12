@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import click
-import os
-import re
 from collections import OrderedDict
 from typing import TextIO
 import taxdmp_tools
@@ -112,7 +110,8 @@ def main(
             lineage = taxdmp_tools.get_lineage(
                 first_taxid = taxid,
                 taxa = taxa,
-                wanted_ranks = wanted_ranks
+                wanted_ranks = wanted_ranks,
+                use_taxids=False
             )
             line = "\t".join(
                 [str(taxid), format_lineage(lineage)]
