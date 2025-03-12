@@ -38,6 +38,19 @@ def get_lineage(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> Order
         taxid = taxa[taxid]["parent"]
     return taxonomy
 
+def get_lineage_ids(first_taxid: int, taxa: dict, wanted_ranks: tuple[str]) -> OrderedDict:
+    taxonomy = OrderedDict()
+    for rank in wanted_ranks:
+        taxonomy[rank] = None
+    taxid = first_taxid
+    while True:
+        if taxid == 1:
+            break
+        if taxa[taxid]["rank"] in wanted_ranks:
+            taxonomy[taxa[taxid]["rank"]] = taxid
+        taxid = taxa[taxid]["parent"]
+    return taxonomy
+
 def prune_lineage_empty_ranks(lineage: OrderedDict):
     return(
         OrderedDict(

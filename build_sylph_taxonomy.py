@@ -55,9 +55,6 @@ def build_sylph_taxonomy(
     )
 
     with open("taxonomy.tsv", "w") as f_taxonomy:
-        f_taxonomy.write("")
-
-    with open("taxonomy.tsv", "a") as f_taxonomy:
         next(samplesheet_fp)  # skip header
         for line in samplesheet_fp:
             if not line.strip():
@@ -66,7 +63,7 @@ def build_sylph_taxonomy(
             taxid = int(fields[1])
             fasta_dna = format_sylph_fasta_filename(fields[2]).split("/")[-1]
             taxonomy = format_sylph_taxonomy(
-                taxdmp_tools.get_lineage(taxid, taxa, wanted_ranks)
+                taxdmp_tools.get_lineage_ids(taxid, taxa, wanted_ranks)
             )
             f_taxonomy.write("\t".join([fasta_dna, taxonomy]) + "\n")
 
