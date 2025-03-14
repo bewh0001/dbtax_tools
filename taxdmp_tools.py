@@ -29,7 +29,7 @@ def get_lineage(
         first_taxid: int,
         taxa: dict,
         wanted_ranks: tuple[str],
-        use_taxids: bool
+        output_taxids: bool = False
     ) -> OrderedDict:
     taxonomy = OrderedDict()
     for rank in wanted_ranks:
@@ -39,7 +39,7 @@ def get_lineage(
         if taxid == 1:
             break
         if taxa[taxid]["rank"] in wanted_ranks:
-            if use_taxids:
+            if output_taxids:
                 taxonomy[taxa[taxid]["rank"]] = taxid
             else:
                 taxonomy[taxa[taxid]["rank"]] = taxa[taxid]["name"]

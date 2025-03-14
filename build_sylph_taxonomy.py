@@ -40,7 +40,7 @@ from pathlib import Path
 )
 @click.option(
     "--use-taxids",
-    "use_taxids",
+    "output_taxids",
     is_flag=True,
     default=False,
     help="generate a lineage of taxonomic IDs instead of names"
@@ -51,7 +51,7 @@ def build_sylph_taxonomy(
     nodes_dmp_fp: TextIO,
     names_dmp_fp: TextIO,
     output_path: str,
-    use_taxids: bool
+    output_taxids: bool
 ):
     
     output_file = Path(output_path)
@@ -84,7 +84,7 @@ def build_sylph_taxonomy(
                     first_taxid=taxid,
                     taxa=taxa,
                     wanted_ranks=wanted_ranks,
-                    use_taxids=use_taxids)
+                    output_taxids=output_taxids)
             )
             f_taxonomy.write("\t".join([fasta_dna, taxonomy]) + "\n")
 

@@ -5,6 +5,7 @@ from collections import OrderedDict
 from typing import TextIO
 import taxdmp_tools
 from pathlib import Path
+import pandas
 
 
 @click.command()
@@ -45,138 +46,124 @@ def main(
 ):
     
     output_file = Path(output_path)
-    output_directory = output_file.parent
-    output_directory.mkdir(parents=True, exist_ok=True)
-    nodes_dmp = Path(taxonomy + "/nodes.dmp")
-    names_dmp = Path(taxonomy + "/names.dmp")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    profiles = get_sample_profiles(samplesheet_fp = samplesheet_fp)
+    taxonomic_counts_data = parse_profiles(profiles = profiles, classifier = tool)
+    taxonomic_counts_data["lineage"] = get_lineages_from_taxids(
+        taxdump = taxonomy, taxids = taxonomic_counts_data["taxid"]
+    )
 
+    wide_data = format_tax_data(taxonomic_counts_data)
+    wide_data.to_csv(output_file, sep="\t")
+
+def get_lineages_from_taxids(taxids: list[int], taxdump: str):
+    nodes_dmp = Path(taxdump + "/nodes.dmp")
+    names_dmp = Path(taxdump + "/names.dmp")
     with open(nodes_dmp, "r") as nodes_dmp_fp, open(names_dmp, "r") as names_dmp_fp:
         taxa = taxdmp_tools.build_taxa_dict(nodes_dmp_fp, names_dmp_fp)
 
-    wanted_ranks = (
-        "superkingdom",
-        "phylum",
-        "class",
-        "order",
-        "family",
-        "genus",
-        "species",
-    )
+    wanted_ranks = ("superkingdom", "phylum","class","order","family","genus","species")
+
+    def taxid_to_lineage(taxid: int):
+        return(format_lineage(taxdmp_tools.get_lineage(
+            first_taxid=taxid, taxa=taxa, wanted_ranks=wanted_ranks)))
     
+    return(list(map(taxid_to_lineage, taxids)))
+
+def get_sample_profiles(samplesheet_fp: TextIO):
     # skip samplesheet file header
     next(samplesheet_fp)
 
-    samples = OrderedDict()
-
+    profiles = {}
     for line in samplesheet_fp:
         if not line.strip():
             continue
         fields = line.split(sep="\t")
         sample = fields[0].strip()
         profile_path = Path(fields[1].strip())
-        samples[sample] = {"profile": profile_path}
-    
+        profiles[sample] = profile_path
+    return(profiles)
+
+def parse_profiles(profiles: dict, classifier: str):        
+    counts_data = {"sample": [], "taxid": [], "count": []}
+    for sample in profiles:
+        with open(profiles[sample], "r") as profile_fp:
+            profile = profile_fp.readlines()
+        match classifier:
+            case "sylph":
+                taxid_counts = parse_sylph_profile(profile = profile)
+            case _:
+                taxid_counts = parse_profile_reads(profile = profile, classifier = classifier)
+        for taxid, reads_count in taxid_counts.items():
+            counts_data["sample"].append(sample)
+            counts_data["taxid"].append(taxid)
+            counts_data["count"].append(reads_count)
+    return(counts_data)
+
+def format_tax_data(long_data: dict):
+    wide_data = pandas.DataFrame(long_data).pivot_table(
+        index=["taxid","lineage"],
+        columns="sample",
+        values="count",
+        fill_value=0)
+    return(wide_data)
+
+def parse_profile_reads(profile: list, classifier: str):
+    def get_fields(line: str): return(line.split(sep="\t"))
+    def is_classified(taxid): return(taxid > 0)
+    match classifier:
+        case "kraken2" | "metabuli":
+            def get_taxid(fields: list): return(int(fields[2]))
+        case "metacache":
+            def get_fields(line: str): return(line.split(sep="|"))
+            def get_taxid(fields: list): return(int(fields[3]))
+        case "diamond":
+            def get_taxid(fields: list): return(int(fields[1]))
+
     taxid_counts = {}
+    for line in profile:
+        # skip metacache header
+        if classifier == "metacache" and line.strip()[0] == "#":
+            continue
+        fields = get_fields(line)
+        taxid = get_taxid(fields)
+        if not is_classified(taxid):
+            continue
+        taxid_counts[taxid] = taxid_counts.get(taxid, 0) + 1
+    return(taxid_counts)
 
-    for sample in samples:
-        with open(samples[sample]["profile"], "r") as profile_fp:
-            def get_taxid(tool: str):
-                match tool:
-                    case "kraken2":
-                        return(get_kraken2_taxid)
-                    case "diamond":
-                        return(get_diamond_taxid)
-                    case "metabuli":
-                        return(get_metabuli_taxid)
-                    case "metacache":
-                        return(get_metacache_taxid)
-                    case "sylph":
-                        return(get_sylph_taxid)
+def parse_sylph_profile(profile: list):
+    taxid_counts = {}
+    # skip profile header
+    for line in profile[2:]:
+        fields = line.split(sep="\t")
+        clade = tuple(fields[0].split(sep="|"))
+        # only consider full clades down to species level (strain level is not handled)
+        if clade[-1][0:3] != "s__":
+            continue
+        taxid = get_sylph_taxid(clade = list(clade))
+        read_count = int(fields[3])
+        taxid_counts[taxid] = taxid_counts.get(taxid, 0) + read_count
+    return(taxid_counts)
 
-            for line in profile_fp:
-                if not line.strip():
-                    continue
-                taxid = get_taxid(tool = tool)(line = line)
-                if taxid > 1:
-                    # initialize all sample read counts to 0
-                    if taxid not in taxid_counts:
-                        taxid_counts[taxid] = {s: 0 for s in samples}
-                    taxid_counts[taxid][sample] += 1
-
-    with open(output_file, "w") as output_fp:
-        header = "\t".join(["taxonomy_id", "lineage"] + list(samples.keys()))
-        output_fp.write(header + "\n")
-        for taxid in taxid_counts:
-            lineage = taxdmp_tools.get_lineage(
-                first_taxid = taxid,
-                taxa = taxa,
-                wanted_ranks = wanted_ranks,
-                use_taxids=False
-            )
-            line = "\t".join(
-                [str(taxid), format_lineage(lineage)]
-                + list(map(str,taxid_counts[taxid].values()))
-            )
-            output_fp.write(line + "\n")
+def get_sylph_taxid(clade: list):
+    while True:
+        tax_string = clade.pop()
+        try:
+            # pick the lowest level valid taxid in clade
+            taxid = int(tax_string[3:])
+            if taxid > 0:
+                break
+        except ValueError:
+            # if no valid taxid in clade, return 238384 (other sequences)
+            if len(clade) == 0:
+                return(28384)
+    return(taxid)
 
 def format_lineage(lineage: OrderedDict):
     pruned_lineage = taxdmp_tools.prune_lineage_empty_ranks(lineage)
     return(";".join(pruned_lineage.values()))
-
-def get_kraken2_taxid(line: str):
-    fields = line.split(sep="\t")
-    classified = fields[0] == "C"
-    if classified:
-        taxid = int(fields[2])
-        return(taxid)
-    else:
-        return(0)
-
-def get_diamond_taxid(line: str):
-    fields = line.split(setp="\t")
-    taxid = int(fields[1])
-    return(taxid)
-
-def get_metabuli_taxid(line: str):
-    fields = line.split(sep="\t")
-    classified = fields[0] == "1"
-    if classified:
-        taxid = int(fields[2])
-        return(taxid)
-    else:
-        return(0)
-
-def get_metacache_taxid(line: str):
-    # skip comments
-    if line.strip()[0] == "#":
-        return(0)
-    fields = line.split(sep="|")
-    taxid = int(fields[3].strip())
-    return(taxid)
-
-def get_sylph_taxid(line: str):
-    fields = line.split(sep="\t")
-    # skip first two lines
-    if fields[0] in ("#SampleID", "clade_name"):
-        return(0)
-    
-    clade = fields[0].split(sep="|")
-    tax_string = clade.pop() # get last level in clade
-
-    # only consider full clades down to species level (strain level is ignored)
-    if tax_string[0:3] != "s__":
-        return(0)
-    while True:
-        try:
-            # pick the lowest level valid taxid in clade
-            taxid = int(tax_string[3:])
-            break
-        except ValueError:
-            # if no valid taxid in clade, return 28384 (other sequences)
-            if len(clade) == 0:
-                return(28384)
-            tax_string = clade.pop()
-    return(taxid)
 
 if __name__ == "__main__":
     main()
