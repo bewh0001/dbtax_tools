@@ -25,6 +25,18 @@ def build_taxa_dict(nodes_dmp_fp: TextIO, names_dmp_fp: TextIO) -> dict:
             )
     return(taxa)
 
+def get_taxon_name(taxid: int, taxa: dict):
+    if taxid > 0:
+        return(taxa[taxid]["name"])
+    elif taxid == 0:
+        return("Unclassified")
+
+def get_taxon_rank(taxid: int, taxa: dict):
+    if taxid > 0:
+        return(taxa[taxid]["rank"])
+    elif taxid == 0:
+        return("no rank")
+
 def get_lineage(
         first_taxid: int,
         taxa: dict,

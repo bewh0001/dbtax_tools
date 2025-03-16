@@ -6,6 +6,7 @@ from typing import TextIO
 import taxdmp_tools
 from pathlib import Path
 import pandas
+from functools import reduce
 
 
 @click.command()
@@ -37,39 +38,127 @@ import pandas
     type=click.STRING,
     help="classifier tool used to generate sample profiles"
 )
+@click.option(
+    "--summarise-at",
+    "summarise_at",
+    default="",
+    type=click.STRING,
+    help="summarise abundance profiles up to the given taxonomic rank \
+          and ignore abundances at higher ranks"
+)
 
 def main(
         samplesheet_fp: TextIO,
         taxonomy: str,
         output_path: str,
-        tool: str
+        tool: str,
+        summarise_at: str
 ):
     
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    profiles = get_sample_profiles(samplesheet_fp = samplesheet_fp)
-    taxonomic_counts_data = parse_profiles(profiles = profiles, classifier = tool)
-    taxonomic_counts_data["lineage"] = get_lineages_from_taxids(
-        taxdump = taxonomy, taxids = taxonomic_counts_data["taxid"]
-    )
 
-    wide_data = format_tax_data(taxonomic_counts_data)
+    taxa = create_taxa(taxonomy = taxonomy)
+    profiles = get_sample_profiles(samplesheet_fp = samplesheet_fp)
+    raw_profile_data = parse_profiles(profiles=profiles, classifier=tool)
+    standardised_data = standardise_profiles(data=raw_profile_data,
+                        classifier=tool, summarise_at=summarise_at, taxa=taxa)
+
+    wide_data = format_tax_data(standardised_data)
     wide_data.to_csv(output_file, sep="\t")
 
-def get_lineages_from_taxids(taxids: list[int], taxdump: str):
-    nodes_dmp = Path(taxdump + "/nodes.dmp")
-    names_dmp = Path(taxdump + "/names.dmp")
+def create_taxa(taxonomy: str):
+    nodes_dmp = Path(taxonomy + "/nodes.dmp")
+    names_dmp = Path(taxonomy + "/names.dmp")
     with open(nodes_dmp, "r") as nodes_dmp_fp, open(names_dmp, "r") as names_dmp_fp:
         taxa = taxdmp_tools.build_taxa_dict(nodes_dmp_fp, names_dmp_fp)
+    return(taxa)
 
+def standardise_profiles(data: dict, classifier: str, taxa: dict, summarise_at: str):
+    std_data = {"sample": [], "taxonomy_id": [], "name": [], "rank": [],
+                "num_reads": [], "lineage": []}
+    for sample in data:
+        taxid_counts = get_taxid_counts(classifier)(data=data[sample])
+        if summarise_at:
+            taxid_counts = summarise_taxa_counts(
+                taxid_counts=taxid_counts, target_rank=summarise_at, taxa=taxa)
+        std_data["sample"].extend([sample for i in range(len(taxid_counts))])
+        std_data["taxonomy_id"].extend([taxid for taxid in taxid_counts.keys()])
+        std_data["num_reads"].extend([count for count in taxid_counts.values()])    
+        std_data["name"] = list(map(
+            lambda taxid: taxdmp_tools.get_taxon_name(taxid, taxa),
+            std_data["taxonomy_id"]))
+        std_data["rank"] = list(map(
+            lambda taxid: taxdmp_tools.get_taxon_rank(taxid, taxa),
+            std_data["taxonomy_id"]))
+        std_data["lineage"] = get_lineages_from_taxids(
+            taxids=std_data["taxonomy_id"], taxa=taxa)
+    return(std_data)
+
+def get_taxid_counts(classifier):
+    match classifier:
+        case "kraken2" | "metabuli" | "metacache":
+            return(get_k2_counts)
+        case "diamond":
+            return(get_diamond_counts)
+        case "sylph":
+            return(get_sylph_counts)
+
+def map_taxids_to_higher(taxids: list, target_rank: str, taxa: dict):
+    taxid_map = {}
+    for taxid in taxids:
+        new_taxid = taxid
+        while new_taxid != 1:
+            if taxa[new_taxid]["rank"] == target_rank:
+                taxid_map.setdefault(new_taxid, []).append(taxid)
+                break
+            new_taxid = taxa[new_taxid]["parent"]
+    return(taxid_map)
+
+def summarise_taxa_counts(taxid_counts: dict, target_rank: str, taxa: dict):
+    taxid_map = map_taxids_to_higher(taxids=list(taxid_counts.keys()),
+                                     target_rank=target_rank, taxa=taxa)
+    summarised_counts = {}
+    for target_taxid in taxid_map:
+        counts = list(map(
+            lambda taxid: taxid_counts[taxid], taxid_map[target_taxid]))
+        summarised_counts[target_taxid] = reduce(lambda a,b: a+b, counts)
+    return(summarised_counts)
+
+def get_k2_counts(data: dict):
+    taxid_counts = {
+        taxid: count for taxid, count
+        in zip(data["taxonomy_id"], data["taxon_reads"])
+        if (count > 0 and taxid > 0)
+    }
+    return(taxid_counts)
+
+def get_diamond_counts(data: dict):
+    taxids = list({taxid for taxid in data["taxonomy_id"] if taxid > 0})
+    taxid_counts = {}
+    for taxid in taxids:
+        num_reads = len([None for n in data["taxonomy_id"] if n == taxid])
+        taxid_counts[taxid] = num_reads
+    return(taxid_counts)
+
+def get_sylph_counts(data: dict):
+    taxid_counts = {
+        taxid: count for taxid, count
+        in zip(data["taxonomy_id"], data["num_reads"])
+        if taxid > 0
+    }
+    return(taxid_counts)
+
+def get_lineages_from_taxids(taxids: list[int], taxa: dict):
     wanted_ranks = ("superkingdom", "phylum","class","order","family","genus","species")
-
-    def taxid_to_lineage(taxid: int):
-        return(format_lineage(taxdmp_tools.get_lineage(
-            first_taxid=taxid, taxa=taxa, wanted_ranks=wanted_ranks)))
-    
-    return(list(map(taxid_to_lineage, taxids)))
+    lineages = []
+    for taxid in taxids:
+        if taxid == 0:
+            return("")
+        lineages.append(format_lineage(taxdmp_tools.get_lineage(
+            first_taxid=taxid, taxa=taxa, wanted_ranks=wanted_ranks
+        )))
+    return(lineages)
 
 def get_sample_profiles(samplesheet_fp: TextIO):
     # skip samplesheet file header
@@ -85,67 +174,82 @@ def get_sample_profiles(samplesheet_fp: TextIO):
         profiles[sample] = profile_path
     return(profiles)
 
-def parse_profiles(profiles: dict, classifier: str):        
-    counts_data = {"sample": [], "taxid": [], "count": []}
+def parse_profiles(profiles: dict, classifier: str):
+    profile_data = {}
     for sample in profiles:
         with open(profiles[sample], "r") as profile_fp:
             profile = profile_fp.readlines()
         match classifier:
+            case "kraken2" | "metabuli":
+                profile_data[sample] = parse_k2_style_report(report=profile)
             case "sylph":
-                taxid_counts = parse_sylph_profile(profile = profile)
-            case _:
-                taxid_counts = parse_profile_reads(profile = profile, classifier = classifier)
-        for taxid, reads_count in taxid_counts.items():
-            counts_data["sample"].append(sample)
-            counts_data["taxid"].append(taxid)
-            counts_data["count"].append(reads_count)
-    return(counts_data)
+                profile_data[sample] = parse_sylph_profile(profile=profile)
+            case "diamond":
+                profile_data[sample] = parse_diamond_report(report=profile)
+            case "metacache":
+                profile_data[sample] = parse_metacache_report(report=profile)
+    return(profile_data)
 
 def format_tax_data(long_data: dict):
     wide_data = pandas.DataFrame(long_data).pivot_table(
-        index=["taxid","lineage"],
+        index=["taxonomy_id","name","rank","lineage"],
         columns="sample",
-        values="count",
+        values="num_reads",
         fill_value=0)
     return(wide_data)
 
-def parse_profile_reads(profile: list, classifier: str):
-    def get_fields(line: str): return(line.split(sep="\t"))
-    def is_classified(taxid): return(taxid > 0)
-    match classifier:
-        case "kraken2" | "metabuli":
-            def get_taxid(fields: list): return(int(fields[2]))
-        case "metacache":
-            def get_fields(line: str): return(line.split(sep="|"))
-            def get_taxid(fields: list): return(int(fields[3]))
-        case "diamond":
-            def get_taxid(fields: list): return(int(fields[1]))
+def parse_k2_style_report(report: list):
+    columns = ("percent", "clade_reads", "taxon_reads", "taxonomy_lvl",
+               "taxonomy_id", "name")
+    data = {col: [] for col in columns}
+    for line in report:
+        fields = line.split(sep="\t")
+        data["percent"].append(float(fields[0]))
+        data["clade_reads"].append(int(fields[1]))
+        data["taxon_reads"].append(int(fields[2]))
+        data["taxonomy_lvl"].append(fields[3])
+        data["taxonomy_id"].append(int(fields[4]))
+        data["name"].append(fields[5])
+    return(data)
 
-    taxid_counts = {}
-    for line in profile:
-        # skip metacache header
-        if classifier == "metacache" and line.strip()[0] == "#":
-            continue
-        fields = get_fields(line)
-        taxid = get_taxid(fields)
-        if not is_classified(taxid):
-            continue
-        taxid_counts[taxid] = taxid_counts.get(taxid, 0) + 1
-    return(taxid_counts)
+def parse_metacache_report(report: list):
+    columns = ("rank", "name", "taxonomy_id", "taxon_reads", "percent")
+    data = {col: [] for col in columns}
+    for line in report[2:]:
+        fields = line.split(sep="|")
+        data["rank"].append(fields[0].strip())
+        data["name"].append(fields[1].strip())
+        data["taxonomy_id"].append(int(fields[2]))
+        data["taxon_reads"].append(int(fields[3]))
+        data["percent"].append(fields[4].strip())
+    return(data)
+
+def parse_diamond_report(report: list):
+    columns = ("query_id", "taxonomy_id", "e_value")
+    data = {col: [] for col in columns}
+    for line in report:
+        fields = line.split()
+        data["query_id"].append(fields[0])
+        data["taxonomy_id"].append(int(fields[1]))
+        data["e_value"].append(float(fields[2]))
+    return(data)
 
 def parse_sylph_profile(profile: list):
-    taxid_counts = {}
+    data = {"clade_name": [], "rel_abundance": [], "seq_abundance": [],
+             "taxonomy_id": [], "num_reads": []}
     # skip profile header
     for line in profile[2:]:
-        fields = line.split(sep="\t")
+        fields = line.split()
         clade = tuple(fields[0].split(sep="|"))
         # only consider full clades down to species level (strain level is not handled)
         if clade[-1][0:3] != "s__":
             continue
-        taxid = get_sylph_taxid(clade = list(clade))
-        read_count = int(fields[3])
-        taxid_counts[taxid] = taxid_counts.get(taxid, 0) + read_count
-    return(taxid_counts)
+        data["clade_name"].append(fields[0])
+        data["rel_abundance"].append(float(fields[1]))
+        data["seq_abundance"].append(float(fields[2]))
+        data["num_reads"].append(int(fields[3]))
+        data["taxonomy_id"].append(get_sylph_taxid(clade = list(clade)))
+    return(data)
 
 def get_sylph_taxid(clade: list):
     while True:

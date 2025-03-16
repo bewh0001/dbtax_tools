@@ -214,4 +214,5 @@ pyrightconfig.json
 
 results/*
 taxdump/*
-testing/
+testing/*
+examples/*
