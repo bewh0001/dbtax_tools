@@ -114,7 +114,7 @@ def get_output(profiles: dict, samplesheet: pandas.DataFrame):
                  "taxid": [taxid], "reads": [",".join(map(str,reads))]}
             )
             df = pandas.concat([df,row])
-    return(df)
+    return(df.astype({"taxid": int}))
 
 def standardise_k2_profile(profile: pandas.DataFrame):
     std_profile = profile.loc[profile["status"] == "C", ["taxid","read_id"]].copy()
