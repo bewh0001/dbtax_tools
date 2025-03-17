@@ -23,13 +23,6 @@ import pandas
     help="input taxnoodle tsv file",
 )
 @click.option(
-    "--taxid-map",
-    "taxid_map_fp",
-    required=False,
-    type=click.File("r"),
-    help="tsv file mapping lower rank taxids to summarised rank taxids"
-)
-@click.option(
     "--output",
     "output_path",
     required=True,
@@ -48,18 +41,13 @@ def main(
         samplesheet_fp: TextIO,
         taxnoodle_fp: TextIO,
         output_path: str,
-        tool: str,
-        taxid_map_fp: TextIO = None,
+        tool: str
 ):
 
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    if taxid_map_fp:
-        taxid_map = parse_taxid_map(taxid_map_fp)
-        taxnoodle = parse_taxnoodle(taxnoodle_fp=taxnoodle_fp, taxid_map=taxid_map)
-    else:
-        taxnoodle = parse_taxnoodle(taxnoodle_fp)
+    taxnoodle = parse_taxnoodle(taxnoodle_fp)
     samplesheet = parse_samplesheet(samplesheet_fp)
     raw_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
     std_profiles = standardise_profiles(profiles=raw_profiles, classifier=tool)
@@ -68,17 +56,6 @@ def main(
     output = get_output(profiles=filtered_profiles, samplesheet=samplesheet)
     output.to_csv(output_file, sep="\t", index=False)
 
-def parse_taxid_map(taxid_map_fp: TextIO):
-    taxid_map = {}
-    next(taxid_map_fp)
-    for line in taxid_map_fp:
-        if not line.strip():
-            continue
-        fields = line.split("\t")
-        original_taxid = int(fields[0])
-        higher_taxid = int(fields[1])
-        taxid_map[higher_taxid] = original_taxid
-    return(taxid_map)
 
 def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
     filtered_profiles = {}
@@ -88,7 +65,7 @@ def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
         filtered_profiles[sample] = filtered_profile
     return(filtered_profiles)
 
-def parse_taxnoodle(taxnoodle_fp: TextIO, taxid_map: dict = None):
+def parse_taxnoodle(taxnoodle_fp: TextIO):
     taxnoodle = taxnoodle_fp.readlines()
     data = {"taxid": [], "sample": []}
     
@@ -97,10 +74,7 @@ def parse_taxnoodle(taxnoodle_fp: TextIO, taxid_map: dict = None):
         if not line.strip():
             continue
         fields = line.split("\t")
-        if taxid_map:
-            taxid = taxid_map[int(fields[0])]
-        else:
-            taxid = int(fields[0])
+        taxid = int(fields[0])
         counts = list(map(int,fields[4:]))
         pos_samples = [samples[i] for i in range(len(samples)) if counts[i] > 0]
         for sample in pos_samples:
@@ -120,7 +94,7 @@ def parse_samplesheet(samplesheet_fp: TextIO):
         data["profile"].append(fields[2].strip())
     return(pandas.DataFrame(data))
 
-def get_output(profiles: dict, samplesheet: pandas.DataFrame, taxid_map: dict = None):
+def get_output(profiles: dict, samplesheet: pandas.DataFrame):
     df = pandas.DataFrame({"sample": [], "fastq": [], "taxid": [], "reads": []})
     for sample, profile in profiles.items():
         for taxid in set(profile["taxid"]):
