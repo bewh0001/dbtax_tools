@@ -82,7 +82,16 @@ def parse_taxnoodle(taxnoodle_fp: TextIO):
             data["sample"].append(sample)
     return(pandas.DataFrame(data))
 
-def parse_samplesheet(samplesheet_fp: TextIO):
+def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
+    match classifier:
+        case "kraken2":
+            profile_idx = 2
+        case "diamond":
+            profile_idx = 3
+        case "metabuli":
+            profile_idx = 4
+        case "metacache":
+            profile_idx = 5
     data = {"sample": [], "fastq": [], "profile": []}
     next(samplesheet_fp)
     for line in samplesheet_fp:
@@ -91,7 +100,7 @@ def parse_samplesheet(samplesheet_fp: TextIO):
         fields = line.split("\t")
         data["sample"].append(fields[0])
         data["fastq"].append(fields[1].strip())
-        data["profile"].append(fields[2].strip())
+        data["profile"].append(fields[profile_idx].strip())
     return(pandas.DataFrame(data))
 
 def get_output(profiles: dict, samplesheet: pandas.DataFrame):
