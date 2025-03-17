@@ -48,7 +48,7 @@ def main(
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     taxnoodle = parse_taxnoodle(taxnoodle_fp)
-    samplesheet = parse_samplesheet(samplesheet_fp)
+    samplesheet = parse_samplesheet(samplesheet_fp, classifier=tool)
     raw_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
     std_profiles = standardise_profiles(profiles=raw_profiles, classifier=tool)
     filtered_profiles = filter_profiles(profiles=std_profiles, taxnoodle=taxnoodle)
