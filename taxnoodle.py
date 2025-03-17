@@ -120,7 +120,7 @@ def standardise_profiles(data: dict, classifier: str, taxa: dict, summarise_at: 
             std_data["taxonomy_id"]))
         std_data["lineage"] = get_lineages_from_taxids(
             taxids=std_data["taxonomy_id"], taxa=taxa)
-    return(pandas.DataFrame(std_data))
+    return(pandas.DataFrame(std_data).astype({"taxonomy_id": int, "num_reads": int}))
 
 def get_taxid_counts(classifier):
     match classifier:
