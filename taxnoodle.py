@@ -213,6 +213,7 @@ def format_tax_data(long_data: dict):
         index=["taxonomy_id","name","rank","lineage"],
         columns="sample",
         values="num_reads",
+        aggfunc="sum",
         fill_value=0)
     return(wide_data)
 
