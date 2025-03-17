@@ -54,7 +54,7 @@ def main(
         tool: str,
         summarise_at: str
 ):
-    
+
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -64,8 +64,38 @@ def main(
     standardised_data = standardise_profiles(data=raw_profile_data,
                         classifier=tool, summarise_at=summarise_at, taxa=taxa)
 
+    if summarise_at:
+        taxid_map = map_taxids_to_higher(taxids=standardised_data["taxonomy_id"],
+                                         target_rank=summarise_at, taxa=taxa)
+        summarised_data = summarise_data_at(
+            data=standardised_data, taxa=taxa, taxid_map=taxid_map)
+        wide_summarised_data = format_tax_data(summarised_data)
+        taxid_map_file = Path(output_path + ".summarised_to_" + summarise_at + "_taxid_map")
+        wide_summarised_data.to_csv(Path(output_path + ".summarised_to_" + summarise_at), sep="\t")
+        taxid_map_to_df(taxid_map).to_csv(taxid_map_file, sep="\t", index=False)
+        
     wide_data = format_tax_data(standardised_data)
     wide_data.to_csv(output_file, sep="\t")
+
+def taxid_map_to_df(taxid_map: dict):
+    df = pandas.DataFrame(
+        {"from_taxid": list(taxid_map.keys()),
+         "to_taxid": list(taxid_map.values())}
+    )
+    return(df)
+
+def summarise_data_at(data: pandas.DataFrame, taxa: dict, taxid_map: dict):
+    summarised_data = data[data.taxonomy_id.isin(list(taxid_map.keys()))].copy()
+    summarised_data.loc[:,"taxonomy_id"] = [taxid_map[x] for x in summarised_data["taxonomy_id"]]
+    summarised_data = summarised_data.groupby(
+        ["taxonomy_id", "sample"], as_index=False).aggregate({"num_reads": "sum"})
+    summarised_data["name"] = [taxa[taxid]["name"]
+                               for taxid in summarised_data["taxonomy_id"]]
+    summarised_data["rank"] = [taxa[taxid]["rank"]
+                               for taxid in summarised_data["taxonomy_id"]]
+    summarised_data["lineage"] = get_lineages_from_taxids(
+        taxids=summarised_data["taxonomy_id"], taxa=taxa)
+    return(summarised_data)
 
 def create_taxa(taxonomy: str):
     nodes_dmp = Path(taxonomy + "/nodes.dmp")
@@ -79,9 +109,6 @@ def standardise_profiles(data: dict, classifier: str, taxa: dict, summarise_at: 
                 "num_reads": [], "lineage": []}
     for sample in data:
         taxid_counts = get_taxid_counts(classifier)(data=data[sample])
-        if summarise_at:
-            taxid_counts = summarise_taxa_counts(
-                taxid_counts=taxid_counts, target_rank=summarise_at, taxa=taxa)
         std_data["sample"].extend([sample for i in range(len(taxid_counts))])
         std_data["taxonomy_id"].extend([taxid for taxid in taxid_counts.keys()])
         std_data["num_reads"].extend([count for count in taxid_counts.values()])    
@@ -93,7 +120,7 @@ def standardise_profiles(data: dict, classifier: str, taxa: dict, summarise_at: 
             std_data["taxonomy_id"]))
         std_data["lineage"] = get_lineages_from_taxids(
             taxids=std_data["taxonomy_id"], taxa=taxa)
-    return(std_data)
+    return(pandas.DataFrame(std_data))
 
 def get_taxid_counts(classifier):
     match classifier:
@@ -110,20 +137,11 @@ def map_taxids_to_higher(taxids: list, target_rank: str, taxa: dict):
         new_taxid = taxid
         while new_taxid != 1:
             if taxa[new_taxid]["rank"] == target_rank:
-                taxid_map.setdefault(new_taxid, []).append(taxid)
+                #taxid_map.setdefault(new_taxid, []).append(taxid)
+                taxid_map[taxid] = new_taxid
                 break
             new_taxid = taxa[new_taxid]["parent"]
     return(taxid_map)
-
-def summarise_taxa_counts(taxid_counts: dict, target_rank: str, taxa: dict):
-    taxid_map = map_taxids_to_higher(taxids=list(taxid_counts.keys()),
-                                     target_rank=target_rank, taxa=taxa)
-    summarised_counts = {}
-    for target_taxid in taxid_map:
-        counts = list(map(
-            lambda taxid: taxid_counts[taxid], taxid_map[target_taxid]))
-        summarised_counts[target_taxid] = reduce(lambda a,b: a+b, counts)
-    return(summarised_counts)
 
 def get_k2_counts(data: dict):
     taxid_counts = {
