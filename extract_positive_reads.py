@@ -36,12 +36,27 @@ import pandas
     type=click.STRING,
     help="classifier tool used to generate sample profiles"
 )
+@click.option(
+    "--taxonomy",
+    "taxonomy",
+    required=False,
+    type=click.Path(file_okay=False),
+    help="path to directory with NCBI taxdump files",
+)
+@click.option(
+    "--summarise-at",
+    "summarise_at",
+    type=click.STRING,
+    help="taxonomy level up to which lower level positive reads are aggregated"
+)
 
 def main(
         samplesheet_fp: TextIO,
         taxnoodle_fp: TextIO,
         output_path: str,
-        tool: str
+        tool: str,
+        summarise_at: str = None,
+        taxonomy: str = None
 ):
 
     output_file = Path(output_path)
@@ -53,9 +68,25 @@ def main(
     std_profiles = standardise_profiles(profiles=raw_profiles, classifier=tool)
     filtered_profiles = filter_profiles(profiles=std_profiles, taxnoodle=taxnoodle)
 
-    output = get_output(profiles=filtered_profiles, samplesheet=samplesheet)
-    output.to_csv(output_file, sep="\t", index=False)
+    output_data = get_output_data(profiles=filtered_profiles, samplesheet=samplesheet)
+    if summarise_at:
+        taxa = taxdmp_tools.create_taxa(taxonomy=taxonomy)
+        output_data = summarise_output_by_taxid(
+            data=output_data, target_rank=summarise_at, taxa=taxa
+        )
 
+    format_output(output_data).to_csv(output_file, sep="\t", index=False)
+
+def summarise_output_by_taxid(data: pandas.DataFrame, target_rank: str, taxa: dict):
+    summarised_output = data.copy()
+    summarised_output["taxid"] = summarised_output["taxid"].apply(
+        lambda taxid: taxdmp_tools.get_ancestor_at_rank(
+            first_taxid=taxid, target_rank=target_rank, taxa=taxa
+        )
+    )
+    summarised_output.groupby(["sample","fastq","taxid"], as_index=False
+                       ).reads.aggregate(sum)
+    return(summarised_output)
 
 def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
     filtered_profiles = {}
@@ -103,7 +134,7 @@ def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
         data["profile"].append(fields[profile_idx].strip())
     return(pandas.DataFrame(data))
 
-def get_output(profiles: dict, samplesheet: pandas.DataFrame):
+def get_output_data(profiles: dict, samplesheet: pandas.DataFrame):
     df = pandas.DataFrame({"sample": [], "fastq": [], "taxid": [], "reads": []})
     for sample, profile in profiles.items():
         for taxid in set(profile["taxid"]):
@@ -111,10 +142,15 @@ def get_output(profiles: dict, samplesheet: pandas.DataFrame):
             fastq = list(samplesheet.loc[samplesheet["sample"] == sample, "fastq"])[0]
             row = pandas.DataFrame(
                 {"sample": [sample], "fastq": [fastq],
-                 "taxid": [taxid], "reads": [",".join(map(str,reads))]}
+                 "taxid": [taxid], "reads": [reads]}
             )
             df = pandas.concat([df,row])
     return(df.astype({"taxid": int}))
+
+def format_output(data: pandas.DataFrame):
+    formatted_data = data.copy()
+    formatted_data["reads"] = data["reads"].apply(lambda reads_list: ",".join(reads_list))
+    return(formatted_data)
 
 def standardise_k2_profile(profile: pandas.DataFrame):
     std_profile = profile.loc[profile["status"] == "C", ["taxid","read_id"]].copy()

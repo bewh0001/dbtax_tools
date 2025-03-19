@@ -15,21 +15,21 @@ from functools import reduce
     "samplesheet_fp",
     required=True,
     type=click.File("r"),
-    help="input tsv samplesheet",
+    help="input tsv samplesheet"
 )
 @click.option(
     "--taxonomy",
     "taxonomy",
     required=True,
     type=click.Path(file_okay=False),
-    help="path to directory with NCBI taxdump files",
+    help="path to directory with NCBI taxdump files"
 )
 @click.option(
     "--output",
     "output_path",
     required=True,
     type=click.Path(dir_okay=False),
-    help="path to output file",
+    help="path to output file"
 )
 @click.option(
     "--tool",
@@ -43,8 +43,7 @@ from functools import reduce
     "summarise_at",
     default="",
     type=click.STRING,
-    help="summarise abundance profiles up to the given taxonomic rank \
-          and ignore abundances at higher ranks"
+    help="summarise abundance profiles up to the given taxonomic rank and ignore abundances at higher ranks"
 )
 
 def main(
@@ -58,14 +57,14 @@ def main(
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    taxa = create_taxa(taxonomy = taxonomy)
+    taxa = taxdmp_tools.create_taxa(taxonomy = taxonomy)
     profiles = get_sample_profiles(samplesheet_fp = samplesheet_fp)
     raw_profile_data = parse_profiles(profiles=profiles, classifier=tool)
     standardised_data = standardise_profiles(data=raw_profile_data,
                         classifier=tool, summarise_at=summarise_at, taxa=taxa)
 
     if summarise_at:
-        taxid_map = map_taxids_to_higher(taxids=standardised_data["taxonomy_id"],
+        taxid_map = taxdmp_tools.map_taxids_to_higher(taxids=standardised_data["taxonomy_id"],
                                          target_rank=summarise_at, taxa=taxa)
         summarised_data = summarise_data_at(
             data=standardised_data, taxa=taxa, taxid_map=taxid_map)
@@ -97,13 +96,6 @@ def summarise_data_at(data: pandas.DataFrame, taxa: dict, taxid_map: dict):
         taxids=summarised_data["taxonomy_id"], taxa=taxa)
     return(summarised_data)
 
-def create_taxa(taxonomy: str):
-    nodes_dmp = Path(taxonomy + "/nodes.dmp")
-    names_dmp = Path(taxonomy + "/names.dmp")
-    with open(nodes_dmp, "r") as nodes_dmp_fp, open(names_dmp, "r") as names_dmp_fp:
-        taxa = taxdmp_tools.build_taxa_dict(nodes_dmp_fp, names_dmp_fp)
-    return(taxa)
-
 def standardise_profiles(data: dict, classifier: str, taxa: dict, summarise_at: str):
     std_data = {"sample": [], "taxonomy_id": [], "name": [], "rank": [],
                 "num_reads": [], "lineage": []}
@@ -130,18 +122,6 @@ def get_taxid_counts(classifier):
             return(get_diamond_counts)
         case "sylph":
             return(get_sylph_counts)
-
-def map_taxids_to_higher(taxids: list, target_rank: str, taxa: dict):
-    taxid_map = {}
-    for taxid in taxids:
-        new_taxid = taxid
-        while new_taxid != 1:
-            if taxa[new_taxid]["rank"] == target_rank:
-                #taxid_map.setdefault(new_taxid, []).append(taxid)
-                taxid_map[taxid] = new_taxid
-                break
-            new_taxid = taxa[new_taxid]["parent"]
-    return(taxid_map)
 
 def get_k2_counts(data: dict):
     taxid_counts = {
