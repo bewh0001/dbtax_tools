@@ -87,7 +87,6 @@ def main(
         output_data = summarise_output_by_taxid(
             data=output_data, target_rank=summarise_at, taxa=taxa
         )
-
     format_output(output_data).to_csv(output_file, sep="\t", index=False)
 
 def summarise_output_by_taxid(data: pandas.DataFrame, target_rank: str, taxa: dict):
@@ -98,7 +97,7 @@ def summarise_output_by_taxid(data: pandas.DataFrame, target_rank: str, taxa: di
         )
     )
     summarised_output.groupby(["sample","fastq","taxid"], as_index=False
-                       ).aggregate({"reads": sum})
+                       ).aggregate({"reads": "sum"})
     return(summarised_output)
 
 def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
@@ -166,7 +165,7 @@ def format_output(data: pandas.DataFrame):
 
 def standardise_profiles(profiles: dict):
     def standardise_profile(profile: pandas.DataFrame):
-        return(profile.loc[profile["taxid"] == 0, ["taxid","read_id"]])
+        return(profile.loc[profile["taxid"] > 0, ["taxid","read_id"]])
     std_profiles = {}
     for sample in profiles:
         std_profiles[sample] = standardise_profile(profile=profiles[sample])
