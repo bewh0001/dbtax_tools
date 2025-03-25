@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 
+"""
+For an associated sample fastq file, extract positive read IDs from different
+classifier profiles and aggregate reads with the same predicted taxonomic ID.
+The samples and taxonomic IDs to include are taken from an input taxnoodle
+report. Optionally, a lowest taxonomic rank can be specified to which reads
+with a lower predicted rank wil be summarised to. An output tsv file is
+generated with the format
+
+sample  fastq   taxid   reads
+sample1    /path/to/sample1.fq  taxid1  read1,read2,...,readN
+"""
+
 import click
 from typing import TextIO
 import taxdmp_tools
@@ -64,8 +76,9 @@ def main(
 
     taxnoodle = parse_taxnoodle(taxnoodle_fp)
     samplesheet = parse_samplesheet(samplesheet_fp, classifier=tool)
-    raw_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
-    std_profiles = standardise_profiles(profiles=raw_profiles, classifier=tool)
+    
+    classifier_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
+    std_profiles = standardise_profiles(profiles=classifier_profiles)
     filtered_profiles = filter_profiles(profiles=std_profiles, taxnoodle=taxnoodle)
 
     output_data = get_output_data(profiles=filtered_profiles, samplesheet=samplesheet)
@@ -85,15 +98,14 @@ def summarise_output_by_taxid(data: pandas.DataFrame, target_rank: str, taxa: di
         )
     )
     summarised_output.groupby(["sample","fastq","taxid"], as_index=False
-                       ).reads.aggregate(sum)
+                       ).aggregate({"reads": sum})
     return(summarised_output)
 
 def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
     filtered_profiles = {}
     for sample,profile in profiles.items():
         taxids = list(taxnoodle.loc[taxnoodle["sample"] == sample, "taxid"])
-        filtered_profile = profile.loc[profile["taxid"].isin(taxids), :].copy()
-        filtered_profiles[sample] = filtered_profile
+        filtered_profiles[sample] = profile.loc[profile["taxid"].isin(taxids), :].copy()
     return(filtered_profiles)
 
 def parse_taxnoodle(taxnoodle_fp: TextIO):
@@ -101,7 +113,7 @@ def parse_taxnoodle(taxnoodle_fp: TextIO):
     data = {"taxid": [], "sample": []}
     
     samples = taxnoodle[0].strip().split("\t")[4:]
-    for line in taxnoodle[1:]:
+    for line in taxnoodle[1:]: # skip header
         if not line.strip():
             continue
         fields = line.split("\t")
@@ -152,18 +164,12 @@ def format_output(data: pandas.DataFrame):
     formatted_data["reads"] = data["reads"].apply(lambda reads_list: ",".join(reads_list))
     return(formatted_data)
 
-def standardise_k2_profile(profile: pandas.DataFrame):
-    std_profile = profile.loc[profile["status"] == "C", ["taxid","read_id"]].copy()
-    return(std_profile)
-
-def standardise_profiles(profiles: dict, classifier: str):
+def standardise_profiles(profiles: dict):
     def standardise_profile(profile: pandas.DataFrame):
-        match classifier:
-            case "kraken2":
-                return(standardise_k2_profile)
+        return(profile.loc[profile["taxid"] == 0, ["taxid","read_id"]])
     std_profiles = {}
     for sample in profiles:
-        std_profiles[sample] = standardise_profile(classifier)(profile=profiles[sample])
+        std_profiles[sample] = standardise_profile(profile=profiles[sample])
     return(std_profiles)
 
 def parse_profiles(samplesheet: pandas.DataFrame, classifier: str):
@@ -183,11 +189,55 @@ def parse_profiles(samplesheet: pandas.DataFrame, classifier: str):
                 profile_data[sample] = parse_metacache_profile(profile=profile)
     return(profile_data)
 
+def parse_diamond_profile(profile: list):
+    columns = ("read_id", "taxid", "e-value")
+    data = {col: [] for col in columns}
+    for line in profile:
+        if not line.strip():
+            continue
+        fields = line.split(sep="\t")
+        data["read_id"].append(fields[0])
+        data["taxid"].append(int(fields[1]))
+        data["e-value"].append(float(fields[2]))
+    return(pandas.DataFrame(data))
+
+def parse_metabuli_profile(profile: list):
+    columns = ("status", "read_id", "taxid", "read_len", "DNA_ident", "rank", "match_count")
+    data = {col: [] for col in columns}
+    for line in profile:
+        if not line.strip():
+            continue
+        fields = line.split(sep="\t")
+        data["status"].append(int(fields[0]))
+        data["read_id"].append(fields[1])
+        data["taxid"].append(int(fields[2]))
+        data["read_len"].append(int(fields[3]))
+        data["DNA_ident"].append(float(fields[4]))
+        data["rank"].append(fields[5])
+        if len(fields) == 7:
+            data["match_count"].append(fields[6])
+        else:
+            data["match_count"].append(match_count)
+    return(pandas.DataFrame(data))
+
+def parse_metacache_profile(profile: list):
+    columns = {"read_id", "rank", "taxname", "taxid"}
+    data = {col: [] for col in columns}
+    for line in profile:
+        if not line.strip():
+            continue
+        fields = line.split(sep="|")
+        data["read_id"] = fields[0].strip()
+        data["rank"] = fields[1].strip()
+        data["taxname"] = fields[2].strip()
+        data["taxid"] = int(fields[3].strip())
+    return(pandas.DataFrame(data))
+
 def parse_k2_profile(profile: list):
     columns = ("status", "read_id", "taxid", "read_len", "LCA_mapping")
     data = {col: [] for col in columns}
     for line in profile:
-        if not line:
+        if not line.strip():
             continue
         fields = line.split(sep="\t")
         data["status"].append(fields[0])
