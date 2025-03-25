@@ -44,17 +44,17 @@ def cli():
    help="Print ancestor taxon rank"
 )
 def taxid2ancestor(input_fp: str, target_rank: str, name: bool, rank: bool, taxonomy: str):
-    taxids = parse_taxids(input_fp)
+    taxids = [line.strip() for line in input_fp]
     taxa = taxdmp_tools.create_taxa(taxonomy=taxonomy)
 
-    new_taxids = list(map(
-        lambda taxid: taxdmp_tools.get_ancestor_at_rank(
-            first_taxid=taxid, target_rank=target_rank, taxa=taxa
-        ), taxids
-    ))
-
-    for taxid in new_taxids:
-        print(format_taxon_output(taxid=taxid, name=name, rank=rank, taxa=taxa))
+    for taxid in taxids:
+        try:
+            ancestor_taxid = taxdmp_tools.get_ancestor_at_rank(
+                first_taxid=int(taxid), target_rank=target_rank, taxa=taxa
+            )
+            print(format_taxon_output(taxid=ancestor_taxid, name=name, rank=rank, taxa=taxa))
+        except ValueError:
+            print(taxid)
 
 def format_taxon_output(taxid: int, name: bool, rank: bool, taxa: dict):
     fields = [str(taxid)]
@@ -69,7 +69,7 @@ def parse_taxids(input_fp: TextIO):
     for line in input_fp:
         if not line.strip():
             continue
-        taxids.append(int(line.strip()))
+        taxids.append(line.strip())
     return(taxids)
 
 if __name__ == "__main__":
