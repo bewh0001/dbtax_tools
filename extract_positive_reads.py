@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
 """
-For an associated sample fastq file, extract positive read IDs from different
+For an associated sample fastq file, extract positive read IDs from
 classifier profiles and aggregate reads with the same predicted taxonomic ID.
-The samples and taxonomic IDs to include are taken from an input taxnoodle
-report. Optionally, a lowest taxonomic rank can be specified to which reads
-with a lower predicted rank wil be summarised to. An output tsv file is
-generated with the format
+The samples to include are specified in a samplesheet and the reads are
+matched against an input file of expected taxa. A read will be considered
+positive if its assigned taxon matches an expected taxon or a descended taxa
+at a lower taxonomic rank. An output tsv file is generated with the format
 
 sample  fastq   taxid   reads
 sample1    /path/to/sample1.fq  taxid1  read1,read2,...,readN
+...
+
+where taxid1 is the taxonomic identifier of an expected taxon 
 """
 
 import click
@@ -28,8 +31,8 @@ import pandas
     help="input tsv samplesheet of sample profiles",
 )
 @click.option(
-    "--taxnoodle",
-    "taxnoodle_fp",
+    "--expected_taxa",
+    "expected_taxa_fp",
     required=True,
     type=click.File("r"),
     help="input taxnoodle tsv file",
@@ -56,73 +59,57 @@ import pandas
     help="path to directory with NCBI taxdump files",
 )
 @click.option(
-    "--summarise-at",
+    "--summarise_at",
     "summarise_at",
     type=click.STRING,
+    required=True,
     help="taxonomy level up to which lower level positive reads are aggregated"
 )
 
 def main(
         samplesheet_fp: TextIO,
-        taxnoodle_fp: TextIO,
+        expected_taxa_fp: TextIO,
         output_path: str,
         tool: str,
-        summarise_at: str = None,
-        taxonomy: str = None
+        taxonomy: str,
+        summarise_at: str
 ):
 
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
+    taxa = taxdmp_tools.create_taxa(taxonomy=taxonomy)
 
-    taxnoodle = parse_taxnoodle(taxnoodle_fp)
+
+    expected_taxids = parse_expected_taxa(expected_taxa_fp)
     samplesheet = parse_samplesheet(samplesheet_fp, classifier=tool)
     
     classifier_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
     std_profiles = standardise_profiles(profiles=classifier_profiles)
-    filtered_profiles = filter_profiles(profiles=std_profiles, taxnoodle=taxnoodle)
+    filtered_profiles = filter_profiles(
+        profiles=std_profiles, expected_taxids=expected_taxids, taxa=taxa
+    )
 
-    output_data = get_output_data(profiles=filtered_profiles, samplesheet=samplesheet)
-    if summarise_at:
-        taxa = taxdmp_tools.create_taxa(taxonomy=taxonomy)
-        output_data = summarise_output_by_taxid(
-            data=output_data, target_rank=summarise_at, taxa=taxa
-        )
+    output_data = get_output_data(
+        profiles=filtered_profiles, samplesheet=samplesheet,
+        summarise_at=summarise_at, taxa=taxa
+    )
     format_output(output_data).to_csv(output_file, sep="\t", index=False)
 
-def summarise_output_by_taxid(data: pandas.DataFrame, target_rank: str, taxa: dict):
-    summarised_output = data.copy()
-    summarised_output["taxid"] = summarised_output["taxid"].apply(
-        lambda taxid: taxdmp_tools.get_ancestor_at_rank(
-            first_taxid=taxid, target_rank=target_rank, taxa=taxa
-        )
-    )
-    summarised_output.groupby(["sample","fastq","taxid"], as_index=False
-                       ).aggregate({"reads": "sum"})
-    return(summarised_output)
-
-def filter_profiles(profiles: dict, taxnoodle: pandas.DataFrame):
+def filter_profiles(profiles: dict, expected_taxids: list, taxa: dict):
+    def is_taxid_expected(taxid: int):
+        return(taxdmp_tools.ancestor_is_in(
+            first_taxid=taxid, ancestors=expected_taxids, taxa=taxa
+        ))
     filtered_profiles = {}
     for sample,profile in profiles.items():
-        taxids = list(taxnoodle.loc[taxnoodle["sample"] == sample, "taxid"])
-        filtered_profiles[sample] = profile.loc[profile["taxid"].isin(taxids), :].copy()
+        taxid_is_expected = list(map(is_taxid_expected, profile["taxid"]))
+        filtered_profiles[sample] = profile.loc[taxid_is_expected, :].copy()
     return(filtered_profiles)
 
-def parse_taxnoodle(taxnoodle_fp: TextIO):
-    taxnoodle = taxnoodle_fp.readlines()
-    data = {"taxid": [], "sample": []}
-    
-    samples = taxnoodle[0].strip().split("\t")[4:]
-    for line in taxnoodle[1:]: # skip header
-        if not line.strip():
-            continue
-        fields = line.split("\t")
-        taxid = int(fields[0])
-        counts = list(map(int,fields[4:]))
-        pos_samples = [samples[i] for i in range(len(samples)) if counts[i] > 0]
-        for sample in pos_samples:
-            data["taxid"].append(taxid)
-            data["sample"].append(sample)
-    return(pandas.DataFrame(data))
+def parse_expected_taxa(expected_taxa_fp: TextIO):
+    expected_taxa = expected_taxa_fp.readlines()
+    taxids = [int(line.split("\t")[0]) for line in expected_taxa[1:]]
+    return(taxids)
 
 def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
     match classifier:
@@ -145,15 +132,20 @@ def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
         data["profile"].append(fields[profile_idx].strip())
     return(pandas.DataFrame(data))
 
-def get_output_data(profiles: dict, samplesheet: pandas.DataFrame):
+def get_output_data(
+        profiles: dict, samplesheet: pandas.DataFrame, summarise_at: str, taxa:dict
+):
     df = pandas.DataFrame({"sample": [], "fastq": [], "taxid": [], "reads": []})
     for sample, profile in profiles.items():
         for taxid in set(profile["taxid"]):
             reads = list(profile.loc[profile["taxid"] == taxid, "read_id"])
             fastq = list(samplesheet.loc[samplesheet["sample"] == sample, "fastq"])[0]
+            summarised_taxid = taxdmp_tools.get_ancestor_at_rank(
+                first_taxid=taxid, target_rank=summarise_at, taxa=taxa
+            )
             row = pandas.DataFrame(
                 {"sample": [sample], "fastq": [fastq],
-                 "taxid": [taxid], "reads": [reads]}
+                 "taxid": [summarised_taxid], "reads": [reads]}
             )
             df = pandas.concat([df,row])
     return(df.astype({"taxid": int}))

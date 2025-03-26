@@ -55,6 +55,14 @@ def get_ancestor_at_rank(first_taxid: int, target_rank: str, taxa: dict):
     # return original taxid if no ancestor of target rank found
     return(first_taxid)
 
+def ancestor_is_in(first_taxid: int, ancestors: list, taxa: dict):
+    taxid = first_taxid
+    while taxid > 1:
+        if taxid in ancestors:
+            return(True)
+        taxid = taxa[taxid]["parent"]
+    return(False)
+
 def get_lineage(
         first_taxid: int,
         taxa: dict,
