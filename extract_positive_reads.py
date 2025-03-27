@@ -88,6 +88,7 @@ def main(
     filtered_profiles = filter_profiles(
         profiles=std_profiles, expected_taxids=expected_taxids, taxa=taxa
     )
+    print(filtered_profiles)
 
     output_data = get_output_data(
         profiles=filtered_profiles, samplesheet=samplesheet,
@@ -103,6 +104,7 @@ def filter_profiles(profiles: dict, expected_taxids: list, taxa: dict):
     filtered_profiles = {}
     for sample,profile in profiles.items():
         taxid_is_expected = list(map(is_taxid_expected, profile["taxid"]))
+        print(profile["taxid"])
         filtered_profiles[sample] = profile.loc[taxid_is_expected, :].copy()
     return(filtered_profiles)
 
@@ -218,10 +220,10 @@ def parse_metacache_profile(profile: list):
         if not line.strip() or line[0] == "#":
             continue
         fields = line.split(sep="|")
-        data["read_id"] = fields[0].strip()
-        data["rank"] = fields[1].strip()
-        data["taxname"] = fields[2].strip()
-        data["taxid"] = int(fields[3].strip())
+        data["read_id"].append(fields[0].strip())
+        data["rank"].append(fields[1].strip())
+        data["taxname"].append(fields[2].strip())
+        data["taxid"].append(int(fields[3].strip()))
     return(pandas.DataFrame(data))
 
 def parse_k2_profile(profile: list):
