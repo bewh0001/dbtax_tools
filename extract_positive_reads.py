@@ -215,7 +215,7 @@ def parse_metacache_profile(profile: list):
     columns = {"read_id", "rank", "taxname", "taxid"}
     data = {col: [] for col in columns}
     for line in profile:
-        if not line.strip():
+        if not line.strip() or line[0] == "#":
             continue
         fields = line.split(sep="|")
         data["read_id"] = fields[0].strip()
