@@ -88,7 +88,6 @@ def main(
     filtered_profiles = filter_profiles(
         profiles=std_profiles, expected_taxids=expected_taxids, taxa=taxa
     )
-    print(filtered_profiles)
 
     output_data = get_output_data(
         profiles=filtered_profiles, samplesheet=samplesheet,
@@ -104,7 +103,6 @@ def filter_profiles(profiles: dict, expected_taxids: list, taxa: dict):
     filtered_profiles = {}
     for sample,profile in profiles.items():
         taxid_is_expected = list(map(is_taxid_expected, profile["taxid"]))
-        print(profile["taxid"])
         filtered_profiles[sample] = profile.loc[taxid_is_expected, :].copy()
     return(filtered_profiles)
 
