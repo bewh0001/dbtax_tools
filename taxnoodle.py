@@ -70,7 +70,7 @@ def main(
             data=standardised_data, taxa=taxa, taxid_map=taxid_map)
         wide_summarised_data = format_tax_data(summarised_data)
         wide_summarised_data.to_csv(Path(
-            output_file.parent + "/" + output_file.stem + ".sum_to_species.tsv"), sep="\t")
+            str(output_file.parent) + "/" + output_file.stem + ".sum_to_species.tsv"), sep="\t")
         
     wide_data = format_tax_data(standardised_data)
     wide_data.to_csv(output_file, sep="\t")
