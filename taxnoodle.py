@@ -69,9 +69,7 @@ def main(
         summarised_data = summarise_data_at(
             data=standardised_data, taxa=taxa, taxid_map=taxid_map)
         wide_summarised_data = format_tax_data(summarised_data)
-        taxid_map_file = Path(output_path + ".summarised_to_" + summarise_at + "_taxid_map")
-        wide_summarised_data.to_csv(Path(output_path + ".summarised_to_" + summarise_at), sep="\t")
-        taxid_map_to_df(taxid_map).to_csv(taxid_map_file, sep="\t", index=False)
+        wide_summarised_data.to_csv(Path(output_file.stem + ["sum_to_species.tsv"]), sep="\t")
         
     wide_data = format_tax_data(standardised_data)
     wide_data.to_csv(output_file, sep="\t")
