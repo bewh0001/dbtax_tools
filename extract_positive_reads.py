@@ -2,11 +2,10 @@
 
 """
 For an associated sample fastq file, extract positive read IDs from
-classifier profiles and aggregate reads with the same predicted taxonomic ID.
-The samples to include are specified in a samplesheet and the reads are
-matched against an input file of expected taxa. A read will be considered
-positive if its assigned taxon matches an expected taxon or a descended taxa
-at a lower taxonomic rank. An output tsv file is generated with the format
+classifier profiles and aggregate reads with the same ancestor taxon
+at a given taxonomic rank. Any hit at a higher rank will be ignored.
+The samples to include are specified in a samplesheet and an output
+tsv file is generated with the format
 
 sample  fastq   taxid   reads
 sample1    /path/to/sample1.fq  taxid1  read1,read2,...,readN
@@ -31,13 +30,6 @@ import pandas
     help="input tsv samplesheet of sample profiles",
 )
 @click.option(
-    "--expected_taxa",
-    "expected_taxa_fp",
-    required=True,
-    type=click.File("r"),
-    help="input taxnoodle tsv file",
-)
-@click.option(
     "--output",
     "output_path",
     required=True,
@@ -54,7 +46,7 @@ import pandas
 @click.option(
     "--taxonomy",
     "taxonomy",
-    required=False,
+    required=True,
     type=click.Path(file_okay=False),
     help="path to directory with NCBI taxdump files",
 )
@@ -68,7 +60,6 @@ import pandas
 
 def main(
         samplesheet_fp: TextIO,
-        expected_taxa_fp: TextIO,
         output_path: str,
         tool: str,
         taxonomy: str,
@@ -79,37 +70,16 @@ def main(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     taxa = taxdmp_tools.create_taxa(taxonomy=taxonomy)
 
-
-    expected_taxids = parse_expected_taxa(expected_taxa_fp)
     samplesheet = parse_samplesheet(samplesheet_fp, classifier=tool)
     
     classifier_profiles = parse_profiles(samplesheet=samplesheet, classifier=tool)
     std_profiles = standardise_profiles(profiles=classifier_profiles)
-    filtered_profiles = filter_profiles(
-        profiles=std_profiles, expected_taxids=expected_taxids, taxa=taxa
-    )
 
     output_data = get_output_data(
-        profiles=filtered_profiles, samplesheet=samplesheet,
+        profiles=std_profiles, samplesheet=samplesheet,
         summarise_at=summarise_at, taxa=taxa
     )
     format_output(output_data).to_csv(output_file, sep="\t", index=False)
-
-def filter_profiles(profiles: dict, expected_taxids: list, taxa: dict):
-    def is_taxid_expected(taxid: int):
-        return(taxdmp_tools.ancestor_is_in(
-            first_taxid=taxid, ancestors=expected_taxids, taxa=taxa
-        ))
-    filtered_profiles = {}
-    for sample,profile in profiles.items():
-        taxid_is_expected = list(map(is_taxid_expected, profile["taxid"]))
-        filtered_profiles[sample] = profile.loc[taxid_is_expected, :].copy()
-    return(filtered_profiles)
-
-def parse_expected_taxa(expected_taxa_fp: TextIO):
-    expected_taxa = expected_taxa_fp.readlines()
-    taxids = [int(line.split("\t")[0]) for line in expected_taxa[1:]]
-    return(taxids)
 
 def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
     match classifier:
