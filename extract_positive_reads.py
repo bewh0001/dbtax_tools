@@ -113,6 +113,8 @@ def get_output_data(
             summarised_taxid = taxdmp_tools.get_ancestor_at_rank(
                 first_taxid=taxid, target_rank=summarise_at, taxa=taxa
             )
+            if taxa[summarised_taxid]["rank"] != summarise_at:
+                continue
             row = pandas.DataFrame(
                 {"sample": [sample], "fastq": [fastq],
                  "taxid": [summarised_taxid], "reads": [reads]}
