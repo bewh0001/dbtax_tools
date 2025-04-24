@@ -87,7 +87,7 @@ def main(
                                              taxa=taxa)
     filtered_profiles = filter_profiles(profiles=summarised_profiles, expected_taxa=expected_taxa)
 
-    output_data = get_output_data(profiles=filtered_profiles, samplesheet=samplesheet)
+    output_data = get_output_data(profiles=filtered_profiles, samplesheet=samplesheet, expected_taxa=expected_taxa)
     format_output(output_data).to_csv(output_file, sep="\t", index=False)
 
 def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
@@ -113,11 +113,10 @@ def parse_samplesheet(samplesheet_fp: TextIO, classifier: str):
         data["profile"].append(fields[profile_idx].strip())
     return(pandas.DataFrame(data))
 
-def get_output_data(
-        profiles: dict, samplesheet: pandas.DataFrame):
+def get_output_data(profiles: dict, samplesheet: pandas.DataFrame, expected_taxa: tuple):
     df = pandas.DataFrame({"sample": [], "fastq": [], "taxid": [], "reads": []})
     for sample, profile in profiles.items():
-        for taxid in set(profile["taxid"]):
+        for taxid in expected_taxa:
             reads = list(profile.loc[profile["taxid"] == taxid, "read_id"])
             fastq = list(samplesheet.loc[samplesheet["sample"] == sample, "fastq"])[0]
             row = pandas.DataFrame(
