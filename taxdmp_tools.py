@@ -48,10 +48,14 @@ def get_taxon_rank(taxid: int, taxa: dict):
 def get_ancestor_at_rank(first_taxid: int, target_rank: str, taxa: dict):
     taxid = first_taxid
     while taxid > 1:
-        if taxa[taxid]["rank"] == target_rank:
-            # return ancestor with target rank
-            return(taxid)
-        taxid = taxa[taxid]["parent"]
+        try:
+            if taxa[taxid]["rank"] == target_rank:
+                # return ancestor with target rank
+                return(taxid)
+            taxid = taxa[taxid]["parent"]
+        except KeyError:
+            print("Unknown taxid. Unable to get ancestor.")
+            break
     # return original taxid if no ancestor of target rank found
     return(first_taxid)
 
