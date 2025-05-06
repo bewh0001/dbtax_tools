@@ -148,12 +148,13 @@ def summarise_profiles(profiles: dict, summarise_at: str, taxa: dict):
         summarised_profile = profile.copy()
         summarised_profile["taxid"] = list(map(summarise_taxid,
                                     profile["taxid"]))
-        summarised_profile["tax_rank"] = []
+        tax_ranks = []
         for taxid in summarised_profile["taxid"]:
             try:
-                summarised_profile["tax_rank"].append(taxa[taxid]["rank"])
+                tax_ranks.append(taxa[taxid]["rank"])
             except KeyError:
-                summarised_profile["tax_rank"].append("unknown")
+                tax_ranks.append("unknown")
+        summarised_profile["tax_rank"] = tax_ranks
         return(summarised_profile.loc[
             summarised_profile["tax_rank"] == summarise_at, ["taxid", "read_id"]])
             
